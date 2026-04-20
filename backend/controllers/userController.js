@@ -8,7 +8,6 @@ import {
 import crypto from "crypto";
 
 export const register = async (req, res) => {
-    console.log("register req body" ,req.body)
   const { email, password } = req.body;
   const userExists = await User.findOne({ email });
 
@@ -87,6 +86,54 @@ export const refreshToken = async (req, res) => {
     res.json({ message: "Token refreshed" });
   } catch (error) {
     res.status(403).json({ message: "Token expired" });
+  }
+};
+
+export const upgradeToOwner = async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id);
+
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    if (user.role === "owner") {
+      return res.status(400).json({ message: "Already an owner" });
+    }
+
+    user.role = "owner";
+
+    // 🔥 Generate new tokens with updated role
+    const accessToken = generateAccessToken(user);
+    const refreshToken = generateRefreshToken(user);
+
+    // ✅ Store hashed refresh token
+    user.refreshToken = crypto
+      .createHash("sha256")
+      .update(refreshToken)
+      .digest("hex");
+
+    await user.save();
+
+    // 🍪 Set cookies
+    res.cookie("accessToken", accessToken, {
+      httpOnly: true,
+      secure: false,
+      sameSite: "strict",
+      maxAge: 15 * 60 * 1000,
+    });
+
+    res.cookie("refreshToken", refreshToken, {
+      httpOnly: true,
+      secure: false,
+      sameSite: "strict",
+      maxAge: 7 * 24 * 60 * 60 * 1000,
+    });
+
+    res.json({ message: "Upgraded to owner successfully" });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Server error" });
   }
 };
 
