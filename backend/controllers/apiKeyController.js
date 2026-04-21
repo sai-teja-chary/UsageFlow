@@ -18,6 +18,7 @@ export const createApiKey = async (req, res) => {
     const existingKey = await ApiKey.findOne({
       api: apiId,
       user: req.user.id,
+      status:"active",
     });
 
     if (existingKey) {
@@ -40,3 +41,28 @@ export const createApiKey = async (req, res) => {
     res.status(500).json({message: "Server error"})
   }
 };
+
+export const revokeApiKey = async (req, res) => {
+  try {
+    const { keyId } = req.params;
+
+    const apiKey = await ApiKey.findById(keyId);
+
+    if(!apiKey){
+      return res.status(404).json({message: "API key not found"});
+    }
+
+    if(apiKey.user.toString() !== req.user.id){
+      return res.status(403).json({message: "Not your API key"})
+    }
+
+    apiKey.status = "revoked";
+    await apiKey.save();
+
+    res.json({message: "API key revoked successfully"});
+
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({message: "Server error"});    
+  }
+}
