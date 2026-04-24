@@ -1,8 +1,16 @@
 import axios from "axios";
 import Api from "../models/Api.js";
 import ApiKey from "../models/ApiKey.js";
+import Log from "../models/Log.js";
+import Usage from "../models/Usage.js";
 
 export const gatewayHandler = async (req, res) => {
+  let apiKey;
+  let api;
+  let endpoint = "";
+  const today = new Date().toISOString().slice(0, 10);
+  console.log(today);
+
   try {
     const apiKeyValue = req.headers["x-api-key"];
 
@@ -10,52 +18,87 @@ export const gatewayHandler = async (req, res) => {
       return res.status(401).json({ message: "API key required" });
     }
 
-    const apiKey = await ApiKey.findOne({ key: apiKeyValue });
+    apiKey = await ApiKey.findOne({ key: apiKeyValue });
 
     if (!apiKey) {
-      return res.status(403).json({ message: "Inavlid API key" });
+      return res.status(403).json({ message: "Invalid API key" });
     }
 
-    if (apiKey.status != "active") {
-      return res
-        .status(403)
-        .json({ message: "API key revoked, create another one" });
+    if (apiKey.status !== "active") {
+      return res.status(403).json({ message: "API key revoked" });
     }
 
-    const api = await Api.findById(apiKey.api);
+    api = await Api.findById(apiKey.api);
 
     if (!api) {
       return res.status(404).json({ message: "API not found" });
     }
 
-    const endpoint = req.originalUrl.replace("/gateway/", "");
+    endpoint = req.path.replace("/gateway", "");
+
     const cleanBaseUrl = api.baseUrl.replace(/\/$/, "");
     const url = `${cleanBaseUrl}/${endpoint}`;
-
-    console.log("Base URL:", api.baseUrl);
-    console.log("Endpoint:", endpoint);
-    console.log("Final URL:", url); // <-- check this
 
     const response = await axios({
       method: req.method,
       url,
       params: req.query,
       data: req.body,
-      headers: {},
+      timeout: 5000,
     });
 
-    console.log("API HIT:", {
+    // 🔥 Non-blocking log
+    Log.create({
       apiKey: apiKey._id,
+      api: api._id,
+      user: apiKey.user,
       endpoint,
+      method: req.method,
       status: response.status,
-    });
+    }).catch(console.error);
 
-    res.status(response.status).json(response.data);
+    Usage.updateOne(
+      {
+        apiKey: apiKey._id,
+        api: api._id,
+        date: today,
+      },
+      {
+        $inc: { requestCount: 1 },
+      },
+      { upsert: true },
+    ).catch(console.error);
+
+    return res.status(response.status).json(response.data);
   } catch (error) {
     console.error(error.message);
+
     if (error.response) {
+      if (apiKey && api) {
+        Log.create({
+          apiKey: apiKey._id,
+          api: api._id,
+          user: apiKey.user,
+          endpoint,
+          method: req.method,
+          status: error.response.status,
+        }).catch(console.error);
+        Usage.updateOne(
+          {
+            apiKey: apiKey._id,
+            api: api._id,
+            date: today,
+          },
+          {
+            $inc: { requestCount: 1 },
+          },
+          { upsert: true },
+        ).catch(console.error);
+      }
+
       return res.status(error.response.status).json(error.response.data);
     }
-    res.status(500).json({ message: "Gateway error" });
+
+    return res.status(500).json({ message: "Gateway error" });
   }
 };

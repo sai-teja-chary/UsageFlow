@@ -1,10 +1,9 @@
 import express from "express";
-import { gatewayHandler } from "../controllers/gatewayController.js";
+import { createInvoice } from "../controllers/invoiceController.js";
 import { protect } from "../middleware/authMiddleware.js";
 
 const router = express.Router();
 
-
-router.all('/gateway/{*path}', protect, gatewayHandler);
+router.post("/", protect, createInvoice);
 
 export default router;

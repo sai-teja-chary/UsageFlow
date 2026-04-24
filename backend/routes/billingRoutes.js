@@ -1,10 +1,10 @@
+// routes/billing.routes.js
 import express from "express";
-import { gatewayHandler } from "../controllers/gatewayController.js";
+import { getBilling } from "../controllers/billingController.js";
 import { protect } from "../middleware/authMiddleware.js";
 
 const router = express.Router();
 
-
-router.all('/gateway/{*path}', protect, gatewayHandler);
+router.get("/", protect, getBilling);
 
 export default router;
