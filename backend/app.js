@@ -14,7 +14,7 @@ const app = express();
 
 app.use(
   cors({
-    origin: "http://localhost:5173", // MUST match frontend
+    origin: "https://usage-flow-eight.vercel.app", // MUST match frontend
     credentials: true,               // 🔥 REQUIRED
   })
 );
