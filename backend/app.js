@@ -8,10 +8,17 @@ import apiKeyRoutes from './routes/apiKeyRoutes.js'
 import gatewayRoutes from './routes/gatewayRoutes.js'
 import billingRoutes from './routes/billingRoutes.js'
 import invoiceRoutes from './routes/invoiceRoutes.js'
+import usageRoutes from './routes/usageRoutes.js'
 
 const app = express();
 
-app.use(cors());
+app.use(
+  cors({
+    origin: "http://localhost:5173", // MUST match frontend
+    credentials: true,               // 🔥 REQUIRED
+  })
+);
+
 app.use(express.json());
 app.use(cookieParser());
 
@@ -21,5 +28,6 @@ app.use("/api/keys", apiKeyRoutes);
 app.use("/", gatewayRoutes);
 app.use("/api/billing", billingRoutes)
 app.use("/api/invoice", invoiceRoutes)
+app.use("/api/usage", usageRoutes)
 
 export default app;

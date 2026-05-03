@@ -1,5 +1,4 @@
 import axios from "axios";
-import Api from "../models/Api.js";
 import ApiKey from "../models/ApiKey.js";
 import Log from "../models/Log.js";
 import Usage from "../models/Usage.js";
@@ -8,8 +7,9 @@ export const gatewayHandler = async (req, res) => {
   let apiKey;
   let api;
   let endpoint = "";
+
   const today = new Date().toISOString().slice(0, 10);
-  console.log(today);
+  const startTime = Date.now();
 
   try {
     const apiKeyValue = req.headers["x-api-key"];
@@ -18,9 +18,11 @@ export const gatewayHandler = async (req, res) => {
       return res.status(401).json({ message: "API key required" });
     }
 
-    apiKey = await ApiKey.findOne({ key: apiKeyValue });
+    const prefix = apiKeyValue.slice(0, 8);
 
-    if (!apiKey) {
+    apiKey = await ApiKey.findOne({ prefix }).populate("api");
+
+    if (!apiKey || apiKey.key !== apiKeyValue) {
       return res.status(403).json({ message: "Invalid API key" });
     }
 
@@ -28,26 +30,31 @@ export const gatewayHandler = async (req, res) => {
       return res.status(403).json({ message: "API key revoked" });
     }
 
-    api = await Api.findById(apiKey.api);
+    api = apiKey.api;
 
     if (!api) {
       return res.status(404).json({ message: "API not found" });
     }
 
-    endpoint = req.path.replace("/gateway", "");
+    endpoint = req.originalUrl.replace("/gateway", "");
 
     const cleanBaseUrl = api.baseUrl.replace(/\/$/, "");
-    const url = `${cleanBaseUrl}/${endpoint}`;
+    const url = `${cleanBaseUrl}${endpoint}`;
 
     const response = await axios({
       method: req.method,
       url,
       params: req.query,
       data: req.body,
-      timeout: 5000,
+      timeout: 10000,
+      headers: {
+        "content-type": req.headers["content-type"],
+        authorization: req.headers["authorization"],
+      },
     });
 
-    // 🔥 Non-blocking log
+    const duration = Date.now() - startTime;
+
     Log.create({
       apiKey: apiKey._id,
       api: api._id,
@@ -55,10 +62,12 @@ export const gatewayHandler = async (req, res) => {
       endpoint,
       method: req.method,
       status: response.status,
+      duration,
     }).catch(console.error);
 
     Usage.updateOne(
       {
+        user: apiKey.user,
         apiKey: apiKey._id,
         api: api._id,
         date: today,
@@ -71,10 +80,12 @@ export const gatewayHandler = async (req, res) => {
 
     return res.status(response.status).json(response.data);
   } catch (error) {
+    const duration = Date.now() - startTime;
     console.error(error.message);
 
     if (error.response) {
       if (apiKey && api) {
+        // 📊 Log error
         Log.create({
           apiKey: apiKey._id,
           api: api._id,
@@ -82,9 +93,12 @@ export const gatewayHandler = async (req, res) => {
           endpoint,
           method: req.method,
           status: error.response.status,
+          duration,
         }).catch(console.error);
+
         Usage.updateOne(
           {
+            user: apiKey.user,
             apiKey: apiKey._id,
             api: api._id,
             date: today,

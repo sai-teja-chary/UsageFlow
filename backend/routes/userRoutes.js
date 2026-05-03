@@ -1,5 +1,6 @@
 import express from "express";
 import {
+  getMe,
   login,
   logout,
   refreshToken,
@@ -15,5 +16,6 @@ router.post("/login", login);
 router.post("/refresh", refreshToken);
 router.post("/upgrade", protect, upgradeToOwner)
 router.post("/logout", logout);
+router.get("/me", protect, getMe);
 
 export default router;

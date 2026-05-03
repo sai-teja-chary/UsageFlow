@@ -3,8 +3,7 @@ import Pricing from "../models/Pricing.js";
 import Usage from "../models/Usage.js";
 
 export const calculateBilling = async (apiKey, startDate, endDate) => {
-  // 1. Get usage
-  console.log(apiKey);
+
   const apiKeyObj = new mongoose.Types.ObjectId(apiKey);
   console.log(apiKeyObj);
 
@@ -45,6 +44,8 @@ export const calculateBilling = async (apiKey, startDate, endDate) => {
     const price = pricingMap[item._id.toString()] || 0;
     totalAmount += item.totalRequests * price;
   }
+
+  console.log(totalAmount)
 
   return {
     totalRequests: usage.reduce((sum, u) => sum + u.totalRequests, 0),

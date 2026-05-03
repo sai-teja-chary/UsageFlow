@@ -1,5 +1,6 @@
 import Api from "../models/Api.js";
 import ApiKey from "../models/ApiKey.js";
+import { getUserApiKeys } from "../services/apiKeyService.js";
 import { generateApiKey } from "../utils/generateApiKey.js";
 
 export const createApiKey = async (req, res) => {
@@ -24,7 +25,7 @@ export const createApiKey = async (req, res) => {
     if (existingKey) {
       return res
         .status(400)
-        .json({ message: "Api key already exists for tis API" });
+        .json({ message: "Api key already exists for this API" });
     }
 
     const key = generateApiKey();
@@ -35,7 +36,10 @@ export const createApiKey = async (req, res) => {
       user: req.user.id,
     });
 
-    res.status(201).json(apiKey);
+    res.status(201).json({
+      ...apiKey.toObject(),
+      key,
+    });
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: "Server error" });
@@ -67,29 +71,61 @@ export const revokeApiKey = async (req, res) => {
 };
 
 export const rotateApiKey = async (req, res) => {
-  const { keyId } = req.params;
+  try {
+    const { keyId } = req.params;
 
-  const oldKey = await ApiKey.findById(keyId);
+    const oldKey = await ApiKey.findById(keyId);
 
-  if (!oldKey) {
-    return res.status(404).json({ message: "API key not found" });
+    if (!oldKey) {
+      return res.status(404).json({ message: "API key not found" });
+    }
+
+    // 🔒 Ownership check
+    if (oldKey.user.toString() !== req.user.id) {
+      return res.status(403).json({ message: "Not your API key" });
+    }
+
+    // ✅ STEP 1: revoke old key FIRST
+    oldKey.status = "revoked";
+    await oldKey.save();
+
+    // ✅ STEP 2: create new key
+    const newKeyValue = generateApiKey();
+
+    const newKey = await ApiKey.create({
+      key: newKeyValue,
+      prefix: newKeyValue.slice(0, 8),
+      api: oldKey.api,
+      user: oldKey.user,
+    });
+
+    res.json({
+      message: "Key rotated successfully",
+      newKey,
+    });
+  } catch (error) {
+    console.error(error);
+
+    // 🔥 Handle duplicate safely (just in case)
+    if (error.code === 11000) {
+      return res.status(400).json({
+        message: "Active key already exists for this API",
+      });
+    }
+
+    res.status(500).json({ message: "Server error" });
   }
+};
 
-  // 🔑 Create new key
-  const newKeyValue = generateApiKey();
+export const listApiKeys = async (req, res) => {
+  try {
+    const userId = req.user.id;
 
-  const newKey = await ApiKey.create({
-    key: newKeyValue,
-    api: oldKey.api,
-    user: oldKey.user,
-  });
+    const keys = await getUserApiKeys(userId);
 
-  // ❌ Revoke old key
-  oldKey.status = "revoked";
-  await oldKey.save();
-
-  res.json({
-    message: "Key rotated successfully",
-    newKey,
-  });
+    res.json(keys);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Error fetching API keys" });
+  }
 };

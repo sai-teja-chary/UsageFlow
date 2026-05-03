@@ -7,61 +7,85 @@ import {
 } from "../utils/generateToken.js";
 import crypto from "crypto";
 
+const isProd = process.env.NODE_ENV === "production";
 export const register = async (req, res) => {
-  const { email, password } = req.body;
-  const userExists = await User.findOne({ email });
+  try {
+    const { email, password } = req.body;
+    const userExists = await User.findOne({ email });
 
-  if (userExists) return res.status(400).json({ message: "User Exists" });
+    if (userExists) return res.status(400).json({ message: "User Exists" });
 
-  const hashPassword = await bcrypt.hash(password, 10);
+    const hashPassword = await bcrypt.hash(password, 10);
 
-  const user = await User.create({
-    email,
-    password: hashPassword,
-  });
+    const user = await User.create({
+      email,
+      password: hashPassword,
+    });
 
-  res.json(user);
+    res.json({
+      id: user._id,
+      email: user.email,
+    });
+  } catch (error) {
+    console.error(err);
+    res.status(500).json({ message: "Server error" });
+  }
 };
 
 export const login = async (req, res) => {
-  const { email, password } = req.body;
+  try {
+    const { email, password } = req.body;
 
-  const user = await User.findOne({ email });
-  if (!user) return res.status(400).json({ message: "Invalid Credentials" });
+    const user = await User.findOne({ email });
+    if (!user) return res.status(400).json({ message: "Invalid Credentials" });
 
-  const isMatch = await bcrypt.compare(password, user.password);
-  if (!isMatch) return res.status(400).json({ message: "Invalid Credentials" });
+    const isMatch = await bcrypt.compare(password, user.password);
+    if (!isMatch)
+      return res.status(400).json({ message: "Invalid Credentials" });
 
-  const accessToken = generateAccessToken(user);
-  const refreshToken = generateRefreshToken(user);
+    const accessToken = generateAccessToken(user);
+    const refreshToken = generateRefreshToken(user);
 
-  user.refreshToken = crypto
-    .createHash("sha256")
-    .update(refreshToken)
-    .digest("hex");
-  await user.save();
+    user.refreshToken = crypto
+      .createHash("sha256")
+      .update(refreshToken)
+      .digest("hex");
+    await user.save();
 
-  res.cookie("accessToken", accessToken, {
-    httpOnly: true,
-    secure: false,
-    sameSite: "strict",
-    maxAge: 15 * 60 * 1000,
-  });
+    res.cookie("accessToken", accessToken, {
+      httpOnly: true,
+      secure: isProd,
+      sameSite: isProd ? "Strict" : "Lax",
+      maxAge: 15 * 60 * 1000,
+      path: "/",
+    });
 
-  res.cookie("refreshToken", refreshToken, {
-    httpOnly: true,
-    secure: false,
-    sameSite: "strict",
-    maxAge: 7 * 24 * 60 * 60 * 1000,
-  });
+    res.clearCookie("refreshToken", {
+      httpOnly: true,
+      secure: isProd,
+      sameSite: isProd ? "Strict" : "Lax",
+      path: "/", // 🔥 MUST MATCH
+    });
 
-  res.json({ message: "Login successful" });
+    res.cookie("refreshToken", refreshToken, {
+      httpOnly: true,
+      secure: isProd,
+      sameSite: isProd ? "Strict" : "Lax",
+      maxAge: 7 * 24 * 60 * 60 * 1000,
+      path: "/",
+    });
+
+    res.json({ message: "Login successful" });
+  } catch (error) {
+    console.error(err);
+    res.status(500).json({ message: "Server error" });
+  }
 };
 
 export const refreshToken = async (req, res) => {
   const token = req.cookies.refreshToken;
 
-  if (!token) res.status(401).json({ message: "No refresh token" });
+  if (!token) return res.status(401).json({ message: "No refresh token" });
 
   try {
     const decoded = jwt.verify(token, process.env.REFRESH_SECRET);
@@ -75,17 +99,44 @@ export const refreshToken = async (req, res) => {
     }
 
     const newAccessToken = generateAccessToken(user);
+    const newRefreshToken = generateRefreshToken(user);
+
+    user.refreshToken = crypto
+      .createHash("sha256")
+      .update(newRefreshToken)
+      .digest("hex");
+
+    await user.save();
 
     res.cookie("accessToken", newAccessToken, {
       httpOnly: true,
-      secure: false,
-      sameSite: "strict",
+      secure: isProd,
+      sameSite: isProd ? "Strict" : "Lax",
       maxAge: 15 * 60 * 1000,
+      path: "/",
+    });
+
+    res.clearCookie("refreshToken", {
+      httpOnly: true,
+      secure: isProd,
+      sameSite: isProd ? "Strict" : "Lax",
+      path: "/",
+    });
+
+    res.cookie("refreshToken", newRefreshToken, {
+      httpOnly: true,
+      secure: isProd,
+      sameSite: isProd ? "Strict" : "Lax",
+      maxAge: 7 * 24 * 60 * 60 * 1000,
+      path: "/",
     });
 
     res.json({ message: "Token refreshed" });
   } catch (error) {
-    res.status(403).json({ message: "Token expired" });
+    if (error.name === "TokenExpiredError") {
+      return res.status(401).json({ message: "Token expired" });
+    }
+    return res.status(403).json({ message: "Invalid token" });
   }
 };
 
@@ -102,35 +153,12 @@ export const upgradeToOwner = async (req, res) => {
     }
 
     user.role = "owner";
-
-    // 🔥 Generate new tokens with updated role
-    const accessToken = generateAccessToken(user);
-    const refreshToken = generateRefreshToken(user);
-
-    // ✅ Store hashed refresh token
-    user.refreshToken = crypto
-      .createHash("sha256")
-      .update(refreshToken)
-      .digest("hex");
-
     await user.save();
 
-    // 🍪 Set cookies
-    res.cookie("accessToken", accessToken, {
-      httpOnly: true,
-      secure: false,
-      sameSite: "strict",
-      maxAge: 15 * 60 * 1000,
+    res.json({
+      message: "Upgraded to owner successfully",
+      role: user.role,
     });
-
-    res.cookie("refreshToken", refreshToken, {
-      httpOnly: true,
-      secure: false,
-      sameSite: "strict",
-      maxAge: 7 * 24 * 60 * 60 * 1000,
-    });
-
-    res.json({ message: "Upgraded to owner successfully" });
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: "Server error" });
@@ -138,18 +166,48 @@ export const upgradeToOwner = async (req, res) => {
 };
 
 export const logout = async (req, res) => {
-  const token = req.cookies.refreshToken;
+  try {
+    const token = req.cookies.refreshToken;
 
-  if (token) {
-    const user = await User.findOne({ refreshToken: token });
-    if (user) {
-      user.refreshToken = null;
-      await user.save();
+    if (token) {
+      const hashedToken = crypto
+        .createHash("sha256")
+        .update(token)
+        .digest("hex");
+
+      const user = await User.findOne({ refreshToken: hashedToken });
+      if (user) {
+        user.refreshToken = null;
+        await user.save();
+      }
     }
+
+    res.clearCookie("accessToken", {
+      httpOnly: true,
+      secure: isProd,
+      sameSite: isProd ? "Strict" : "Lax",
+      path: "/",
+    });
+
+    res.clearCookie("refreshToken", {
+      httpOnly: true,
+      secure: isProd,
+      sameSite: isProd ? "Strict" : "Lax",
+      path: "/",
+    });
+
+    res.json({ message: "Logged out" });
+  } catch (error) {
+    console.error(err);
+    res.status(500).json({ message: "Server error" });
   }
+};
 
-  res.clearCookie("accessToken");
-  res.clearCookie("refreshToken");
-
-  res.json({ message: "Logged out" });
+export const getMe = async (req, res) => {
+  res.json({
+    id: req.user.id,
+    name: req.user.email?.split("@")[0],
+    email: req.user.email,
+    role: req.user.role,
+  });
 };
