@@ -55,7 +55,7 @@ export const login = async (req, res) => {
     res.cookie("accessToken", accessToken, {
       httpOnly: true,
       secure: isProd,
-      sameSite: isProd ? "Strict" : "Lax",
+      sameSite: isProd ? "None" : "Lax",
       maxAge: 15 * 60 * 1000,
       path: "/",
     });
@@ -63,14 +63,14 @@ export const login = async (req, res) => {
     res.clearCookie("refreshToken", {
       httpOnly: true,
       secure: isProd,
-      sameSite: isProd ? "Strict" : "Lax",
+      sameSite: isProd ? "None" : "Lax",
       path: "/", // 🔥 MUST MATCH
     });
 
     res.cookie("refreshToken", refreshToken, {
       httpOnly: true,
       secure: isProd,
-      sameSite: isProd ? "Strict" : "Lax",
+      sameSite: isProd ? "None" : "Lax",
       maxAge: 7 * 24 * 60 * 60 * 1000,
       path: "/",
     });
@@ -111,7 +111,7 @@ export const refreshToken = async (req, res) => {
     res.cookie("accessToken", newAccessToken, {
       httpOnly: true,
       secure: isProd,
-      sameSite: isProd ? "Strict" : "Lax",
+      sameSite: isProd ? "None" : "Lax",
       maxAge: 15 * 60 * 1000,
       path: "/",
     });
@@ -119,14 +119,14 @@ export const refreshToken = async (req, res) => {
     res.clearCookie("refreshToken", {
       httpOnly: true,
       secure: isProd,
-      sameSite: isProd ? "Strict" : "Lax",
+      sameSite: isProd ? "None" : "Lax",
       path: "/",
     });
 
     res.cookie("refreshToken", newRefreshToken, {
       httpOnly: true,
       secure: isProd,
-      sameSite: isProd ? "Strict" : "Lax",
+      sameSite: isProd ? "None" : "Lax",
       maxAge: 7 * 24 * 60 * 60 * 1000,
       path: "/",
     });
@@ -185,14 +185,14 @@ export const logout = async (req, res) => {
     res.clearCookie("accessToken", {
       httpOnly: true,
       secure: isProd,
-      sameSite: isProd ? "Strict" : "Lax",
+      sameSite: isProd ? "None" : "Lax",
       path: "/",
     });
 
     res.clearCookie("refreshToken", {
       httpOnly: true,
       secure: isProd,
-      sameSite: isProd ? "Strict" : "Lax",
+      sameSite: isProd ? "None" : "Lax",
       path: "/",
     });
 
